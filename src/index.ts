@@ -2,6 +2,7 @@ import { connectToDatabase } from "./db";
 import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 const cors = require("cors");
+import { OrderItem, Op } from "sequelize";
 
 // Models
 import { Post } from "./models/Post";
@@ -23,17 +24,68 @@ app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
 
-
 app.get("/posts", (req: Request, res: Response) => {
   let query = req.query;
 
-  const offset = query._start ? +query._start : 0; 
-  const limit = query._limit ? +query._limit : 10; 
+  const offset = query._start ? +query._start : 0;
+  const limit = query._limit ? +query._limit : 10;
+  const sort = query._sort ? query._sort.toString() : "";
+
+  interface QueryOptions {
+    offset?: number;
+    limit?: number;
+    order?: OrderItem[];
+  }
+
+  let q: QueryOptions = {
+    offset,
+    limit,
+    order: [["createdAt", "DESC"]],
+  };
+
+  if (sort) {
+    let sortArr = sort.split("_");
+    if (sortArr.length == 2) {
+      q.order = [[sortArr[0], sortArr[1]]];
+    }
+  }
+
+  Post.findAll(q)
+    .then((posts) => {
+      res.json(posts);
+    })
+    .catch(() => {
+      res.status(400).json({ error: "Ошибка сервера!" });
+    });
+});
+
+app.get("/posts/search", (req: Request, res: Response) => {
+  let query = req.query;
+
+  let title = query.title || "";
+  let body = query.body || "";
+
+  let orQuery = [];
+
+  if (title) {
+    orQuery.push({
+      title: {
+        [Op.iLike]: `%${title}%`,
+      },
+    });
+  }
+  if (body) {
+    orQuery.push({
+      body: {
+        [Op.iLike]: `%${body}%`,
+      },
+    });
+  }
 
   Post.findAll({
-    order: [['createdAt', 'DESC']],
-    offset, //
-    limit,
+    where: {
+      [Op.or]: orQuery,
+    },
   })
     .then((posts) => {
       res.json(posts);
